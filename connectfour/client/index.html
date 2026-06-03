@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Connect Four</title>
+<style>
+  :root { --red:#e74c3c; --yellow:#f1c40f; --board:#2c3e50; --empty:#ecf0f1; }
+  body { font-family: system-ui, sans-serif; background:#1a2530; color:#ecf0f1;
+         display:flex; flex-direction:column; align-items:center; padding:24px; }
+  h1 { font-weight:650; letter-spacing:-0.02em; }
+  .card { background:#22303c; padding:20px 24px; border-radius:14px; margin-bottom:18px;
+          box-shadow:0 6px 20px rgba(0,0,0,.25); }
+  input { padding:8px 10px; border-radius:8px; border:1px solid #3a4a58;
+          background:#1a2530; color:#ecf0f1; margin-right:8px; }
+  button { padding:8px 16px; border:0; border-radius:8px; background:#27ae60; color:#fff;
+           font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  #status { min-height:24px; margin:10px 0; font-weight:600; }
+  .board { display:grid; grid-template-columns:repeat(7, 56px); gap:6px;
+           background:var(--board); padding:10px; border-radius:14px; }
+  .cell { width:56px; height:56px; border-radius:50%; background:var(--empty);
+          cursor:pointer; transition:transform .08s; }
+  .cell:hover { transform:scale(1.05); }
+  .cell.p1 { background:var(--red); cursor:default; }
+  .cell.p2 { background:var(--yellow); cursor:default; }
+  .hidden { display:none; }
+  small { color:#8aa0b0; }
+</style>
+</head>
+<body>
+  <h1>Connect Four</h1>
+
+  <div id="loginCard" class="card">
+    <div>
+      <input id="username" placeholder="användarnamn" value="alice">
+      <input id="password" type="password" placeholder="lösenord" value="password">
+      <button id="loginBtn">Logga in</button>
+    </div>
+    <small>Demo-användare: alice / password &nbsp;·&nbsp; bob / password</small>
+  </div>
+
+  <div id="gameCard" class="card hidden">
+    <button id="newGameBtn">Nytt spel</button>
+    <div id="status"></div>
+    <div id="board" class="board"></div>
+    <small>Du är röd (spelare 1). Boten är gul och svarar via meddelandekön.</small>
+  </div>
+
+<script>
+// The client talks ONLY to the BFF. It never calls the internal services directly.
+const BFF = "http://localhost:30080";
+
+let token = null;
+let gameId = null;
+let pollTimer = null;
+
+const $ = id => document.getElementById(id);
+
+$("loginBtn").onclick = async () => {
+  const res = await fetch(`${BFF}/api/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: $("username").value, password: $("password").value })
+  });
+  if (!res.ok) { alert("Inloggning misslyckades"); return; }
+  const data = await res.json();
+  token = data.token;
+  $("loginCard").classList.add("hidden");
+  $("gameCard").classList.remove("hidden");
+  newGame();
+};
+
+$("newGameBtn").onclick = newGame;
+
+async function newGame() {
+  const res = await fetch(`${BFF}/api/games`, {
+    method: "POST",
+    headers: { "Authorization": "Bearer " + token }
+  });
+  const game = await res.json();
+  gameId = game.gameId;
+  render(game);
+  startPolling();
+}
+
+async function drop(col) {
+  if (!gameId) return;
+  const res = await fetch(`${BFF}/api/games/${gameId}/moves`, {
+    method: "POST",
+    headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ column: col })
+  });
+  if (res.ok) {
+    render(await res.json());
+    // The bot replies asynchronously via the queue, so we poll for its move.
+    startPolling();
+  } else {
+    const err = await res.json();
+    $("status").textContent = err.error || "Ogiltigt drag";
+  }
+}
+
+async function refresh() {
+  if (!gameId) return;
+  const res = await fetch(`${BFF}/api/games/${gameId}`, {
+    headers: { "Authorization": "Bearer " + token }
+  });
+  if (res.ok) render(await res.json());
+}
+
+function startPolling() {
+  clearInterval(pollTimer);
+  let ticks = 0;
+  pollTimer = setInterval(() => {
+    refresh();
+    if (++ticks > 10) clearInterval(pollTimer); // stop after ~5s
+  }, 500);
+}
+
+function render(game) {
+  // board is a CSV of 42 cells, row 0 is the bottom; render top row first.
+  const cells = game.board.split(",").map(Number);
+  const boardEl = $("board");
+  boardEl.innerHTML = "";
+  for (let r = 5; r >= 0; r--) {
+    for (let c = 0; c < 7; c++) {
+      const v = cells[r * 7 + c];
+      const div = document.createElement("div");
+      div.className = "cell" + (v === 1 ? " p1" : v === 2 ? " p2" : "");
+      if (v === 0 && game.status === "IN_PROGRESS") div.onclick = () => drop(c);
+      boardEl.appendChild(div);
+    }
+  }
+  let msg;
+  if (game.status === "WON") { msg = (game.winner == 1) ? "Du vann! 🎉" : "Boten vann 🤖";
+                               clearInterval(pollTimer); }
+  else if (game.status === "DRAW") { msg = "Oavgjort"; clearInterval(pollTimer); }
+  else { msg = (game.nextPlayer == 1) ? "Din tur" : "Botens tur…"; }
+  $("status").textContent = msg;
+}
+</script>
+</body>
+</html>

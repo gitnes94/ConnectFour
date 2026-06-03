@@ -1,0 +1,19 @@
+﻿# Maven build output
+target/
+*/target/
+
+# H2-databasfiler (data ska inte checkas in)
+data/
+*.mv.db
+*.lock.db
+
+# IntelliJ
+.idea/
+*.iml
+
+# OS-skräp
+.DS_Store
+Thumbs.db
+
+# Loggar
+*.log

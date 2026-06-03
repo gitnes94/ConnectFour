@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: botservice
+  namespace: connectfour
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: botservice
+  template:
+    metadata:
+      labels:
+        app: botservice
+    spec:
+      containers:
+        - name: botservice
+          image: connectfour/botservice:1.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SPRING_RABBITMQ_HOST
+              value: rabbitmq
+            # Posts bot moves back to Game Service via its DNS name
+            - name: GAMESERVICE_BASE_URL
+              value: http://gameservice:8083

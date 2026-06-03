@@ -1,0 +1,68 @@
+# Local development stack. Run: docker compose up --build
+# Then open client/index.html in a browser (BFF is on http://localhost:8080).
+#
+# Inside this network, services reach each other by their compose service name
+# (e.g. http://authservice:9000), which is the same idea as Kubernetes DNS.
+services:
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # management UI (guest/guest)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  authservice:
+    build: ./authservice
+    ports:
+      - "9001:9000"
+
+  userservice:
+    build: ./userservice
+    ports:
+      - "8082:8082"
+      - "9090:9090"   # gRPC
+    environment:
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://authservice:9000/jwks
+    depends_on:
+      - authservice
+
+  gameservice:
+    build: ./gameservice
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://authservice:9000/jwks
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_GRPC_CLIENT_CHANNELS_USERSERVICE_ADDRESS: static://userservice:9090
+    depends_on:
+      - authservice
+      - userservice
+      - rabbitmq
+
+  botservice:
+    build: ./botservice
+    environment:
+      SPRING_RABBITMQ_HOST: rabbitmq
+      GAMESERVICE_BASE_URL: http://gameservice:8083
+    depends_on:
+      - rabbitmq
+      - gameservice
+
+  bff:
+    build: ./bff
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://authservice:9000/jwks
+      SERVICES_AUTH_URL: http://authservice:9000
+      SERVICES_USER_URL: http://userservice:8082
+      SERVICES_GAME_URL: http://gameservice:8083
+    depends_on:
+      - authservice
+      - userservice
+      - gameservice

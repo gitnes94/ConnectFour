@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bff
+  namespace: connectfour
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bff
+  template:
+    metadata:
+      labels:
+        app: bff
+    spec:
+      containers:
+        - name: bff
+          image: connectfour/bff:1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI
+              value: http://authservice:9000/jwks
+            # All downstream services addressed by internal DNS names
+            - name: SERVICES_AUTH_URL
+              value: http://authservice:9000
+            - name: SERVICES_USER_URL
+              value: http://userservice:8082
+            - name: SERVICES_GAME_URL
+              value: http://gameservice:8083
+---
+# NodePort so you can reach the BFF from your browser during the demo.
+# Everything else stays ClusterIP (internal only).
+apiVersion: v1
+kind: Service
+metadata:
+  name: bff
+  namespace: connectfour
+spec:
+  type: NodePort
+  selector:
+    app: bff
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30080

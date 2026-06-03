@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: userservice
+  namespace: connectfour
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: userservice
+  template:
+    metadata:
+      labels:
+        app: userservice
+    spec:
+      containers:
+        - name: userservice
+          image: connectfour/userservice:1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8082
+            - containerPort: 9090
+          env:
+            # Internal DNS name of the auth Service - no localhost anywhere.
+            - name: SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI
+              value: http://authservice:9000/jwks
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: userservice
+  namespace: connectfour
+spec:
+  selector:
+    app: userservice
+  ports:
+    - name: rest
+      port: 8082
+      targetPort: 8082
+    - name: grpc
+      port: 9090
+      targetPort: 9090
